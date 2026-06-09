@@ -112,7 +112,7 @@ export default function ReceiptDetailPage() {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await receiptsApi.getById(id);
+      const data = await receiptsApi.get(id);
       setReceipt(data);
     } catch { setError('Could not load receipt.'); }
     finally { setLoading(false); }
@@ -124,7 +124,7 @@ export default function ReceiptDetailPage() {
     if (!receipt) return;
     setActing(true);
     try {
-      await receiptsApi.review(id, { action, reviewer_note: note });
+    await receiptsApi.review(id, action, note);
       await load();
     } catch {}
     finally { setActing(false); }
