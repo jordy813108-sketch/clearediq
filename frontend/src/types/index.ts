@@ -1,97 +1,142 @@
-export interface OCRResult {
-  merchant_name?: string;
-  merchant_address?: string;
-  merchant_phone?: string;
-  total_amount?: number;
-  subtotal?: number;
-  tax_amount?: number;
-  tip_amount?: number;
-  transaction_date?: string;
-  transaction_time?: string;
-  items?: Array<{ name: string; price: number; quantity?: number }>;
-  payment_method?: string;
-  card_last_four?: string;
-  approval_code?: string;
-  transaction_id?: string;
-}
-
-export interface FraudFlag {
-  gate: number;
-  rule: string;
-  severity: string;
-  score: number;
-  title: string;
-  detail: string;
-}
-
-export interface Receipt {
-  id: string;
-  status: string;
-  risk_level: string;
-  fraud_score: number;
-  created_at: string;
-  updated_at?: string;
-  file_url?: string;
-  merchant_name?: string;
-  merchant_address?: string;
-  merchant_phone?: string;
-  total_amount?: number;
-  subtotal?: number;
-  tax_amount?: number;
-  tip_amount?: number;
-  transaction_date?: string;
-  transaction_time?: string;
-  items?: Array<{ name: string; price: number; quantity?: number }>;
-  payment_method?: string;
-  card_last_four?: string;
-  approval_code?: string;
-  transaction_id?: string;
-  ocr_result?: OCRResult;
-  fraud_flags?: FraudFlag[];
-  gates?: Record<string, number>;
-  reviewer_note?: string;
-  submitted_by?: string;
-  organization_id?: string;
-  [key: string]: any;
-}
-
-export interface ReceiptListItem {
-  id: string;
-  status: string;
-  risk_level: string;
-  fraud_score: number;
-  merchant_name?: string;
-  total_amount?: number;
-  transaction_date?: string;
-  created_at: string;
-  [key: string]: any;
-}
+export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+export type ReceiptStatus = 'pending' | 'processing' | 'reviewed' | 'approved' | 'rejected' | 'escalated';
 
 export interface User {
   id: string;
   email: string;
-  name: string;
-  role: string;
+  full_name: string;
+  role: 'owner' | 'admin' | 'reviewer' | 'viewer';
   organization_id: string;
 }
 
 export interface Organization {
   id: string;
   name: string;
+  slug: string;
   plan: string;
-  stripe_customer_id?: string;
+  receipts_limit: number;
+  created_at: string;
+}
+
+export interface LineItem {
+  description: string;
+  quantity?: number;
+  unit_price?: number;
+  total?: number;
+}
+
+export interface OCRResult {
+  id?: string;
+  provider?: string;
+  confidence_score?: number;
+  merchant_name?: string;
+  merchant_address?: string;
+  merchant_phone?: string;
+  transaction_date?: string;
+  transaction_time?: string;
+  transaction_id?: string;
+  subtotal?: number;
+  tax_amount?: number;
+  tax_rate?: number;
+  tip_amount?: number;
+  total_amount?: number;
+  payment_method?: string;
+  card_last_four?: string;
+  approval_code?: string;
+  line_items?: LineItem[];
+  field_confidences?: Record<string, number>;
+}
+
+export interface FraudFlag {
+  id?: string;
+  flag_type?: string;
+  rule?: string;
+  gate?: number;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  title: string;
+  description?: string;
+  detail?: string;
+  evidence?: unknown;
+  weight?: number;
+  score?: number;
+}
+
+export interface FraudScore {
+  id?: string;
+  overall_score: number;
+  risk_level: RiskLevel;
+  math_validation_score?: number;
+  tax_validation_score?: number;
+  timestamp_score?: number;
+  duplicate_score?: number;
+  merchant_score?: number;
+  image_forensics_score?: number;
+  metadata_score?: number;
+  behavioral_score?: number;
+  score_breakdown?: Record<string, number>;
+}
+
+export interface Receipt {
+  id: string;
+  original_filename?: string;
+  file_hash?: string;
+  file_size_bytes?: number;
+  mime_type?: string;
+  storage_url?: string;
+  file_url?: string;
+  status: ReceiptStatus;
+  risk_level?: RiskLevel;
+  risk_score?: number;
+  fraud_score?: FraudScore;
+  created_at: string;
+  processed_at?: string;
+  submitted_by?: User;
+  ocr_result?: OCRResult;
+  fraud_flags?: FraudFlag[];
+  reviewer_note?: string;
+  reviewer_notes?: string;
+  merchant_name?: string;
+  merchant_address?: string;
+  merchant_phone?: string;
+  transaction_date?: string;
+  transaction_time?: string;
+  transaction_id?: string;
+  subtotal?: number;
+  tax_amount?: number;
+  tax_rate?: number;
+  tip_amount?: number;
+  total_amount?: number;
+  payment_method?: string;
+  card_last_four?: string;
+  approval_code?: string;
+  gates?: Record<string, number>;
+  [key: string]: unknown;
+}
+
+export interface ReceiptListItem {
+  id: string;
+  original_filename?: string;
+  status: ReceiptStatus;
+  risk_level?: RiskLevel;
+  risk_score?: number;
+  fraud_score?: number;
+  created_at: string;
+  submitted_by?: User;
+  merchant_name?: string;
+  total_amount?: number;
 }
 
 export interface DashboardStats {
   total_receipts: number;
-  flagged_receipts: number;
-  approved_receipts: number;
-  rejected_receipts: number;
-  total_amount?: number;
-  fraud_prevented?: number;
+  high_risk_count: number;
+  pending_review_count: number;
+  auto_approved_count: number;
+  flag_rate: number;
+  avg_risk_score: number;
+  receipts_this_week: number;
 }
 
-export interface AnalyticsData {
+export interface AnalyticsPoint {
   date: string;
   total: number;
   flagged: number;
