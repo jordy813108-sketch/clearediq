@@ -112,7 +112,7 @@ export default function ReceiptDetailPage() {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await receiptsApi.get(id);
+      const data = await receiptsApi.get(id).then(r => r.data);
       setReceipt(data);
     } catch { setError('Could not load receipt.'); }
     finally { setLoading(false); }
