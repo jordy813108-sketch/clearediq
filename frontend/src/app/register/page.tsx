@@ -28,11 +28,18 @@ function RegisterForm() {
     }
     setLoading(true);
     try {
-      const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/register`, {
+     const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, plan }),
+        body: JSON.stringify({
+          full_name: form.name,
+          email: form.email,
+          password: form.password,
+          organization_name: form.company,
+          plan,
+        }),
       });
+    
       const data = await r.json();
       if (!r.ok) { setError(data.detail || 'Registration failed'); return; }
       localStorage.setItem('access_token', data.access_token);
