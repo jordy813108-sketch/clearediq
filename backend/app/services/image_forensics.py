@@ -314,7 +314,7 @@ Respond with ONLY a JSON object in this exact format:
                         "content-type": "application/json",
                     },
                     json={
-                        "model": "claude-opus-4-6",
+                        "model": "claude-opus-4-8",
                         "max_tokens": 500,
                         "messages": [{
                             "role": "user",

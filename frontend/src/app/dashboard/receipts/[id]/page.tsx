@@ -153,7 +153,7 @@ export default function ReceiptDetailPage() {
   const flags = receipt.fraud_flags || [];
   const risk  = (receipt.risk_level || 'LOW') as RiskLevel;
   const riskC = RISK_COLORS[risk] || RISK_COLORS.LOW;
-  const place = (receipt as any).place_details;
+  const place = (score as any)?.score_breakdown?.place_details;
 
   const criticalFlags = flags.filter(f => f.severity === 'critical' || f.severity === 'high');
   const passFlags     = flags.filter(f => f.flag_type?.includes('verified') || f.flag_type?.includes('passed'));
@@ -238,10 +238,10 @@ export default function ReceiptDetailPage() {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 24px' }}>
                   <ScoreBar label="Image forensics"     score={score?.image_forensics_score} />
-                  <ScoreBar label="Address verification" score={(receipt as any).address_verification_score} />
+                  <ScoreBar label="Address verification" score={(score as any)?.score_breakdown?.address_verification_score} />
                   <ScoreBar label="Math validation"      score={score?.math_validation_score} />
                   <ScoreBar label="Tax validation"       score={score?.tax_validation_score} />
-                  <ScoreBar label="Behavioral patterns"  score={score?.behavioral_score} />
+                  <ScoreBar label="Behavioral patterns"  score={(score as any)?.score_breakdown?.behavioral_score} />
                   <ScoreBar label="Timestamp check"      score={score?.timestamp_score} />
                   <ScoreBar label="Duplicate check"      score={score?.duplicate_score} />
                   <ScoreBar label="Merchant check"       score={score?.merchant_score} />

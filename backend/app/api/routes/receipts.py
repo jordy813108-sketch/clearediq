@@ -9,7 +9,8 @@ from app.models.models import Receipt, OCRResult, FraudScore, FraudFlag, UploadL
 from app.schemas.schemas import ReceiptOut, ReceiptListItem, ReceiptReviewRequest
 from app.services.storage_service import storage_service
 from app.services.ocr_service import ocr_service
-from app.services.fraud_engine import fraud_engine
+from app.services.fraud_engine import fraud_engine_v2
+from app.core.config import settings
 import structlog
 
 log = structlog.get_logger()
@@ -119,8 +120,22 @@ async def _process_receipt(receipt_id: str, file_bytes: bytes, mime_type: str):
         )
         db.add(ocr_result)
 
-        # Fraud analysis
-        result = await fraud_engine.analyze(ocr_data, receipt.file_hash or "", file_bytes)
+        # Fraud analysis (v2 — adds merchant/address verification + AI vision)
+        result = await fraud_engine_v2.analyze(
+            ocr_data,
+            receipt.file_hash or "",
+            file_bytes,
+            receipt.original_filename or "",
+            settings.ANTHROPIC_API_KEY or "",
+            settings.GOOGLE_PLACES_API_KEY or "",
+        )
+
+        # Surface v2-only results through the persisted score_breakdown JSON so
+        # the frontend can read them (no new DB columns needed).
+        sb = result.get("score_breakdown") or {}
+        sb["place_details"] = result.get("place_details")
+        sb["address_verification_score"] = result.get("address_verification_score")
+        result["score_breakdown"] = sb
 
         fraud_score = FraudScore(
             receipt_id=receipt.id,
