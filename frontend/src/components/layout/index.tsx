@@ -39,38 +39,45 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-52 bg-white border-r border-gray-100 flex flex-col py-4 flex-shrink-0 h-screen sticky top-0">
-      <div className="px-4 pb-4 border-b border-gray-100 mb-2">
-        <Link href="/dashboard">
+    <aside className="w-60 bg-white border-r border-gray-200 flex flex-col py-5 flex-shrink-0 h-screen sticky top-0">
+      <div className="px-5 pb-5 mb-3 border-b border-gray-100">
+        <Link href="/dashboard" className="inline-flex">
           <Image src="/clearediq-logo.png" alt="cleaREDiq" width={148} height={44} style={{ objectFit: 'contain' }} />
         </Link>
       </div>
-      <nav className="flex-1 px-2 space-y-0.5 overflow-y-auto">
+      <nav className="flex-1 px-3 overflow-y-auto">
         {nav.map((group) => (
-          <div key={group.section} className="mb-2">
-            <p className="px-2 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{group.section}</p>
-            {group.items.map(({ href, label, icon: Icon }) => (
-              <Link key={href} href={href} className={clsx(
-                'flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-sm transition-colors',
-                pathname === href ? 'bg-red-50 text-red-700 font-medium' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-              )}>
-                <Icon className="w-4 h-4 flex-shrink-0" />
-                {label}
-              </Link>
-            ))}
+          <div key={group.section} className="mb-5">
+            <p className="px-3 mb-1 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">{group.section}</p>
+            <div className="space-y-0.5">
+              {group.items.map(({ href, label, icon: Icon }) => {
+                const active = pathname === href;
+                return (
+                  <Link key={href} href={href} className={clsx(
+                    'group relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                    active
+                      ? 'bg-red-50 text-red-600 font-semibold'
+                      : 'text-navy-700 hover:bg-gray-50 hover:text-navy-900'
+                  )}>
+                    {active && <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-red-500" />}
+                    <Icon className={clsx('w-[18px] h-[18px] flex-shrink-0', active ? 'text-red-500' : 'text-gray-400 group-hover:text-navy-700')} />
+                    {label}
+                  </Link>
+                );
+              })}
+            </div>
           </div>
         ))}
       </nav>
-      <div className="px-3 pt-3 border-t border-gray-100">
-        <div className="flex items-center gap-2.5 px-2 py-1.5">
-          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
-               style={{ background: '#fff0f0', color: '#E02020' }}>JL</div>
+      <div className="px-3 pt-3 mt-1 border-t border-gray-100">
+        <div className="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-gray-50">
+          <div className="w-9 h-9 rounded-full bg-red-50 text-red-600 flex items-center justify-center text-xs font-bold flex-shrink-0">JL</div>
           <div className="flex-1 min-w-0">
-            <div className="text-xs font-medium text-gray-900 truncate">Jordan L.</div>
-            <div className="text-xs text-gray-400">Finance admin</div>
+            <div className="text-sm font-semibold text-navy-900 truncate leading-tight">Jordan L.</div>
+            <div className="text-xs text-gray-400 truncate">Finance admin</div>
           </div>
-          <button onClick={handleLogout} className="p-1 text-gray-400 hover:text-gray-600" title="Sign out">
-            <LogOut className="w-3.5 h-3.5" />
+          <button onClick={handleLogout} className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Sign out">
+            <LogOut className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -100,7 +107,7 @@ export function PageHeader({ title, subtitle, actions, breadcrumb }: PageHeaderP
       )}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-lg font-semibold text-gray-900">{title}</h1>
+          <h1 className="text-lg font-semibold text-navy-900">{title}</h1>
           {subtitle && <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>}
         </div>
         {actions && <div className="flex items-center gap-2">{actions}</div>}

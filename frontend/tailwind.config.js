@@ -16,6 +16,24 @@ module.exports = {
           700: '#4338ca',
           900: '#1e1b4b',
         },
+        // cleaREDiq brand identity — red is a sharp ACCENT, navy is structure.
+        red: {
+          50: '#fff0f0',
+          100: '#ffdcdc',
+          200: '#ffbcbc',
+          500: '#E02020',
+          600: '#c81a1a',
+          700: '#a81515',
+        },
+        navy: {
+          50: '#f3f4f8',
+          100: '#e2e4ee',
+          500: '#3a4170',
+          700: '#252b52',
+          900: '#1a1f3a',
+        },
+        // Neutral foundation
+        canvas: '#f8f9fc',
       },
       fontFamily: {
         sans: ['Inter var', 'Inter', 'system-ui', 'sans-serif'],
