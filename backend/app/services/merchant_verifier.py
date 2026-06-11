@@ -7,6 +7,7 @@ Uses Google Places API to verify:
 - Is this a residential address?
 - Does the location match where the employee was?
 """
+import re
 import httpx
 import structlog
 from typing import Optional
@@ -71,10 +72,30 @@ class MerchantVerifier:
                 "place_details": None,
             }
 
-        # Step 1: Search for the business
-        place_result = await self._search_place(merchant_name, merchant_address, google_api_key)
+        # Step 1: Search for the business (cleaned name + address, then
+        # address-only fallback). Returns (place, error, matched_by).
+        place_result, api_error, matched_by = await self._search_place(
+            merchant_name, merchant_address, google_api_key
+        )
+
+        if api_error:
+            # The Places API itself failed (denied/quota/etc.) — that's a
+            # verification gap, NOT evidence the merchant is fabricated.
+            return {
+                "verification_score": 0,
+                "flags": [{
+                    "flag_type": "address_verification_unavailable",
+                    "severity": "low",
+                    "title": "Address verification unavailable",
+                    "description": f"Google Places could not complete the lookup ({api_error}). Merchant legitimacy was not verified.",
+                    "weight": 0,
+                }],
+                "place_details": None,
+            }
 
         if not place_result:
+            # Genuinely unfindable: neither the cleaned name + address nor the
+            # address alone matched anything in Google Places.
             score += 65
             flags.append({
                 "flag_type": "business_not_found",
@@ -84,6 +105,18 @@ class MerchantVerifier:
                 "weight": 0.65,
             })
             return {"verification_score": score, "flags": flags, "place_details": None}
+
+        if matched_by == "address":
+            # The address resolved to a real place but the (formal/legal)
+            # merchant name didn't exact-match — keep the signal visible
+            # without a false "fabricated" HIGH flag.
+            flags.append({
+                "flag_type": "merchant_name_unverified",
+                "severity": "low",
+                "title": "Verified by address; merchant name not an exact match",
+                "description": f"A business was confirmed at '{merchant_address}', but the receipt name '{merchant_name}' did not directly match. Likely a formal/legal name variant.",
+                "weight": 0,
+            })
 
         # Step 2: Get full place details
         place_details = await self._get_place_details(place_result["place_id"], google_api_key)
@@ -147,12 +180,32 @@ class MerchantVerifier:
             } if place_details else None,
         }
 
-    async def _search_place(self, name: str, address: str, api_key: str) -> Optional[dict]:
-        """Search Google Places for a business."""
-        query = f"{name} {address}".strip()
-        if not query:
-            return None
+    # Legal-entity suffixes and franchise/store-number noise that appear in
+    # OCR'd merchant names but not in Google Places listings.
+    _STORE_NUM_RE = re.compile(r'#\s*\d[\w-]*')
+    _SUITE_RE = re.compile(r'\b(?:store|unit|ste|suite)\s*#?\s*\w+\b', re.IGNORECASE)
+    _LEGAL_SUFFIX_RE = re.compile(
+        r'\b(?:l\.?l\.?c\.?|inc\.?|incorporated|corp\.?|corporation|co\.?|'
+        r'company|ltd\.?|limited|l\.?p\.?|l\.?l\.?p\.?|pllc|plc)\b\.?',
+        re.IGNORECASE,
+    )
 
+    def _clean_merchant_name(self, name: str) -> str:
+        """Strip store numbers and legal suffixes so 'Subway #54372-0' -> 'Subway'
+        and "Lowe's Home Centers LLC" -> "Lowe's Home Centers"."""
+        if not name:
+            return ""
+        n = self._STORE_NUM_RE.sub(" ", name)
+        n = self._SUITE_RE.sub(" ", n)
+        n = self._LEGAL_SUFFIX_RE.sub(" ", n)
+        n = re.sub(r'[,\-–]+', " ", n)      # stray commas / dashes
+        n = re.sub(r'\s+', " ", n).strip(" -,")
+        return n
+
+    async def _places_textquery(self, query: str, api_key: str) -> tuple[Optional[dict], str]:
+        """One findplacefromtext call. Returns (first_candidate_or_None, status).
+        status is Google's top-level status ('OK', 'ZERO_RESULTS', 'REQUEST_DENIED',
+        ...) or 'HTTP_<code>' / 'EXCEPTION' for transport-level failures."""
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(
@@ -164,12 +217,52 @@ class MerchantVerifier:
                         "key": api_key,
                     }
                 )
+            if resp.status_code != 200:
+                log.warning("Google Places search HTTP error", status=resp.status_code)
+                return None, f"HTTP_{resp.status_code}"
             data = resp.json()
+            status = data.get("status", "UNKNOWN_ERROR")
+            if status not in ("OK", "ZERO_RESULTS"):
+                log.warning("Google Places search non-OK", status=status,
+                            error=data.get("error_message"))
+                return None, status
             candidates = data.get("candidates", [])
-            return candidates[0] if candidates else None
+            return (candidates[0] if candidates else None), status
         except Exception as e:
             log.warning("Google Places search failed", error=str(e))
-            return None
+            return None, "EXCEPTION"
+
+    async def _search_place(self, name: str, address: str, api_key: str) -> tuple[Optional[dict], Optional[str], str]:
+        """Resolve a business via Google Places using a cleaned name + address,
+        then an address-only fallback.
+
+        Returns (place, api_error, matched_by):
+          - place: the matched candidate, or None if genuinely not found
+          - api_error: a non-OK Places status (e.g. 'REQUEST_DENIED') if the API
+            failed — distinct from a real 'not found'; None otherwise
+          - matched_by: 'name_address' | 'address' | '' (when no match)
+        """
+        cleaned = self._clean_merchant_name(name)
+
+        # Attempt 1: cleaned name + address (or whichever is present).
+        attempt1 = f"{cleaned} {address}".strip()
+        if attempt1:
+            place, status = await self._places_textquery(attempt1, api_key)
+            if status not in ("OK", "ZERO_RESULTS"):
+                return None, status, ""
+            if place:
+                return place, None, "name_address"
+
+        # Attempt 2: address-only fallback (a real address is strong evidence).
+        if address and address.strip():
+            place, status = await self._places_textquery(address.strip(), api_key)
+            if status not in ("OK", "ZERO_RESULTS"):
+                return None, status, ""
+            if place:
+                return place, None, "address"
+
+        # Both attempts returned ZERO_RESULTS — genuinely not found.
+        return None, None, ""
 
     async def _get_place_details(self, place_id: str, api_key: str) -> dict:
         """Get full details for a place."""
