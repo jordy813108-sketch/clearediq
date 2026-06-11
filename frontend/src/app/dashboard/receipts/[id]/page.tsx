@@ -108,6 +108,8 @@ export default function ReceiptDetailPage() {
   const [note, setNote]       = useState('');
   const [copied, setCopied]   = useState(false);
   const [activeTab, setActiveTab] = useState<'report'|'image'|'raw'>('report');
+  const [pollTimedOut, setPollTimedOut] = useState(false);
+  const [pollNonce, setPollNonce] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -132,18 +134,25 @@ export default function ReceiptDetailPage() {
   const analysisComplete = (r: Receipt | null) => !!r && r.status !== 'processing';
 
   // Poll until the background fraud analysis finishes, then stop. Stops on
-  // completion, on unmount, or after a 60s hard cap (24 × 2.5s).
+  // completion, on unmount, or after a 3-minute hard cap (72 × 2.5s).
+  // Bumping pollNonce (via "Check again") restarts polling after a timeout.
   useEffect(() => {
     if (!receipt || analysisComplete(receipt)) return;
+    setPollTimedOut(false);
     let attempts = 0;
-    const MAX_ATTEMPTS = 24;
+    const MAX_ATTEMPTS = 72;
     const timer = setInterval(async () => {
       attempts += 1;
       const data = await refetch();
-      if (analysisComplete(data) || attempts >= MAX_ATTEMPTS) clearInterval(timer);
+      if (analysisComplete(data)) {
+        clearInterval(timer);
+      } else if (attempts >= MAX_ATTEMPTS) {
+        clearInterval(timer);
+        setPollTimedOut(true);
+      }
     }, 2500);
     return () => clearInterval(timer);
-  }, [receipt?.status, id, refetch]);
+  }, [receipt?.status, id, refetch, pollNonce]);
 
   async function handleAction(action: 'approve' | 'reject' | 'escalate') {
     if (!receipt) return;
@@ -252,10 +261,27 @@ export default function ReceiptDetailPage() {
         {receipt.status === 'processing' ? (
           <div style={{ background: 'white', borderRadius: 12, border: '0.5px solid #e5e7eb', padding: 48, textAlign: 'center' }}>
             <Loader2 size={28} color={RED} style={{ animation: 'spin 1s linear infinite', marginBottom: 14 }} />
-            <div style={{ fontSize: 16, fontWeight: 600, color: NAVY, marginBottom: 6 }}>Analyzing receipt…</div>
-            <div style={{ fontSize: 13, color: '#6b7280', maxWidth: 420, margin: '0 auto' }}>
-              Running OCR, fraud checks, and image forensics. This usually takes a few seconds — results will appear automatically.
-            </div>
+            {pollTimedOut ? (
+              <>
+                <div style={{ fontSize: 16, fontWeight: 600, color: NAVY, marginBottom: 6 }}>Still analyzing…</div>
+                <div style={{ fontSize: 13, color: '#6b7280', maxWidth: 420, margin: '0 auto 16px' }}>
+                  This is taking longer than usual. Analysis usually finishes within ~2 minutes.
+                </div>
+                <button
+                  onClick={() => { setPollTimedOut(false); setPollNonce(n => n + 1); }}
+                  style={{ background: RED, color: 'white', border: 'none', borderRadius: 8, padding: '8px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Check again
+                </button>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 16, fontWeight: 600, color: NAVY, marginBottom: 6 }}>Analyzing receipt…</div>
+                <div style={{ fontSize: 13, color: '#6b7280', maxWidth: 420, margin: '0 auto' }}>
+                  Running OCR, fraud checks, and image forensics. This usually takes a few seconds — results will appear automatically.
+                </div>
+              </>
+            )}
           </div>
         ) : (
         <>
