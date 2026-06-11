@@ -138,14 +138,28 @@ class FraudDetectionEngine:
         if subtotal and total and tax is not None:
             expected_total = round(subtotal + tax + tip, 2)
             if abs(expected_total - total) > 0.02:
-                score += 60
-                flags.append({
-                    "flag_type": "math_mismatch",
-                    "severity": "high",
-                    "title": "Subtotal + tax ≠ total",
-                    "description": f"${subtotal} + ${tax} + ${tip} tip = ${expected_total}, but receipt shows ${total}. Numbers don't add up.",
-                    "weight": 0.6,
-                })
+                residual = round(total - subtotal - tax, 2)
+                tip_provided = bool(ocr.get("tip_amount"))
+                # A small positive gap when no tip was captured is far more
+                # likely an unrecorded gratuity than fraud. Treat residuals up
+                # to 30% of subtotal as a probable tip (informational, no score).
+                if not tip_provided and 0 < residual <= round(subtotal * 0.30, 2):
+                    flags.append({
+                        "flag_type": "probable_unrecorded_tip",
+                        "severity": "low",
+                        "title": "Total exceeds subtotal + tax — likely an unrecorded tip",
+                        "description": f"Total ${total} is ${residual} above subtotal ${subtotal} + tax ${tax}; within a plausible tip range and likely a gratuity not captured by OCR.",
+                        "weight": 0,
+                    })
+                else:
+                    score += 60
+                    flags.append({
+                        "flag_type": "math_mismatch",
+                        "severity": "high",
+                        "title": "Subtotal + tax ≠ total",
+                        "description": f"${subtotal} + ${tax} + ${tip} tip = ${expected_total}, but receipt shows ${total}. Numbers don't add up.",
+                        "weight": 0.6,
+                    })
 
         if line_items and subtotal:
             line_total = round(sum(li.get("total", 0) for li in line_items if li.get("total")), 2)
