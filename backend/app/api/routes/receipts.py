@@ -120,7 +120,7 @@ async def _process_receipt(receipt_id: str, file_bytes: bytes, mime_type: str):
         db.add(ocr_result)
 
         # Fraud analysis
-        result = fraud_engine.analyze(ocr_data, receipt.file_hash or "", file_bytes)
+        result = await fraud_engine.analyze(ocr_data, receipt.file_hash or "", file_bytes)
 
         fraud_score = FraudScore(
             receipt_id=receipt.id,
