@@ -390,8 +390,8 @@ export default function ReceiptDetailPage() {
 
         {activeTab === 'image' && (
           <div style={{ background: 'white', borderRadius: 12, border: '0.5px solid #e5e7eb', padding: 24, textAlign: 'center' }}>
-            {receipt.file_url ? (
-              <img src={receipt.file_url} alt="Receipt" style={{ maxWidth: '100%', maxHeight: 800, borderRadius: 8, border: '0.5px solid #e5e7eb' }} />
+            {receipt.image_url ? (
+              <img src={receipt.image_url} alt="Receipt" style={{ maxWidth: '100%', maxHeight: 800, borderRadius: 8, border: '0.5px solid #e5e7eb' }} />
             ) : (
               <div style={{ padding: 60, color: '#9ca3af' }}>
                 <FileText size={32} style={{ marginBottom: 12 }} />

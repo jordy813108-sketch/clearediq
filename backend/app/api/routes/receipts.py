@@ -241,6 +241,14 @@ def get_receipt(
     ).first()
     if not receipt:
         raise HTTPException(404, "Receipt not found")
+
+    # Generate a short-lived presigned URL so the image displays from the
+    # private bucket without exposing it publicly. Transient attribute — read
+    # by ReceiptOut, not persisted.
+    receipt.image_url = (
+        storage_service.get_presigned_url(receipt.storage_key, expires_in=3600)
+        if receipt.storage_key else None
+    )
     return receipt
 
 
