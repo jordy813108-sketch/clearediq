@@ -185,6 +185,26 @@ class FraudDetectionEngine:
                     "weight": 0,
                 })
 
+        # AI-assessed internal consistency of the receipt's OWN printed numbers
+        # (item/sale prices, discounts -> subtotal). The AI reads the full
+        # receipt text, so it isn't fooled by imperfect line-item OCR, and it is
+        # instructed to flag only a CLEAR arithmetic impossibility (default true,
+        # uncertain -> no signal). Conservative MEDIUM signal; does not trip the
+        # severity floor on its own.
+        if ocr.get("internal_math_consistent") is False:
+            score += 35
+            flags.append({
+                "flag_type": "internal_math_inconsistent",
+                "severity": "medium",
+                "title": "Receipt's internal numbers don't reconcile",
+                "description": ocr.get("internal_math_reason") or (
+                    "The receipt's item prices, discounts, and subtotal cannot be "
+                    "reconciled under any reasonable order — a sign the numbers may "
+                    "have been edited."
+                ),
+                "weight": 0.35,
+            })
+
         if total and total > 10000:
             score += 20
             flags.append({
