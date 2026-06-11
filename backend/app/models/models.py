@@ -68,7 +68,7 @@ class User(Base):
     last_login = Column(DateTime)
 
     organization = relationship("Organization", back_populates="users")
-    receipts = relationship("Receipt", back_populates="submitted_by")
+    receipts = relationship("Receipt", foreign_keys="Receipt.submitted_by_id", back_populates="submitted_by")
     audit_events = relationship("AuditEvent", back_populates="user")
 
 
