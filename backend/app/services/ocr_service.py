@@ -92,6 +92,7 @@ class OCRService:
         total_pattern = re.compile(r'(?:total|amount due)[^\d]*(\d+\.\d{2})', re.IGNORECASE)
         subtotal_pattern = re.compile(r'subtotal[^\d]*(\d+\.\d{2})', re.IGNORECASE)
         tax_pattern = re.compile(r'(?:tax|gst|vat)[^\d]*(\d+\.\d{2})', re.IGNORECASE)
+        tip_pattern = re.compile(r'(?:tip|gratuity)[^\d]*(\d+\.\d{2})', re.IGNORECASE)
         date_pattern = re.compile(r'(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})')
         time_pattern = re.compile(r'(\d{1,2}:\d{2}\s*(?:AM|PM)?)', re.IGNORECASE)
         card_pattern = re.compile(r'(?:visa|mc|mastercard|amex|discover)[^\d]*(\d{4})', re.IGNORECASE)
@@ -107,6 +108,9 @@ class OCRService:
 
         m = tax_pattern.search(full_text)
         result["tax_amount"] = float(m.group(1)) if m else None
+
+        m = tip_pattern.search(full_text)
+        result["tip_amount"] = float(m.group(1)) if m else None
 
         m = date_pattern.search(full_text)
         result["transaction_date"] = m.group(1) if m else None
@@ -157,7 +161,8 @@ class OCRService:
             "markdown, no code fences. Use null for any field that is not "
             "present. Numbers must be JSON numbers (not strings, no currency "
             "symbols or thousands separators). Format transaction_date as "
-            "YYYY-MM-DD. Each line item is "
+            "YYYY-MM-DD. Capture any tip, gratuity, or service charge as "
+            "tip_amount. Each line item is "
             '{"description": str, "quantity": number|null, '
             '"unit_price": number|null, "total": number|null}.\n\n'
             "Return exactly this shape:\n"
@@ -169,6 +174,7 @@ class OCRService:
             '  "transaction_id": str|null,\n'
             '  "subtotal": number|null,\n'
             '  "tax_amount": number|null,\n'
+            '  "tip_amount": number|null,\n'
             '  "total_amount": number|null,\n'
             '  "payment_method": str|null,\n'
             '  "card_last_four": str|null,\n'
@@ -208,7 +214,7 @@ class OCRService:
             if not isinstance(parsed, dict):
                 return None
 
-            num_fields = ("subtotal", "tax_amount", "total_amount")
+            num_fields = ("subtotal", "tax_amount", "tip_amount", "total_amount")
             str_fields = (
                 "merchant_name", "merchant_address", "transaction_date",
                 "transaction_time", "transaction_id", "payment_method",
