@@ -12,7 +12,7 @@
     @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all;
   }
   .btn-primary {
-    @apply btn bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95;
+    @apply btn bg-red-500 text-white hover:bg-red-600 active:scale-95;
   }
   .btn-secondary {
     @apply btn bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 active:scale-95;
@@ -27,7 +27,7 @@
     @apply bg-white rounded-xl border border-gray-100 shadow-sm;
   }
   .input {
-    @apply w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent;
+    @apply w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent;
   }
   .badge-high {
     @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700;
