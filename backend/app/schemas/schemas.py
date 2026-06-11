@@ -113,9 +113,9 @@ class ReceiptReviewRequest(BaseModel):
 
 class LineItem(BaseModel):
     description: str
-    quantity: Optional[float]
-    unit_price: Optional[float]
-    total: Optional[float]
+    quantity: Optional[float] = None
+    unit_price: Optional[float] = None
+    total: Optional[float] = None
 
 
 class OCRResultOut(BaseModel):
