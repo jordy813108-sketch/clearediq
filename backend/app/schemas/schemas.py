@@ -75,6 +75,9 @@ class ReceiptOut(BaseModel):
     file_size_bytes: Optional[int]
     mime_type: Optional[str]
     storage_url: Optional[str]
+    # Short-lived presigned URL for displaying the receipt image; generated
+    # per-request in the detail endpoint (never persisted).
+    image_url: Optional[str] = None
     status: str
     risk_level: Optional[str]
     risk_score: Optional[int]

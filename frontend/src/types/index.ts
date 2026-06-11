@@ -84,6 +84,7 @@ export interface Receipt {
   mime_type?: string;
   storage_url?: string;
   file_url?: string;
+  image_url?: string;
   status: ReceiptStatus;
   risk_level?: RiskLevel;
   risk_score?: number;
