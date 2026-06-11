@@ -111,7 +111,10 @@ class FraudDetectionEngine:
         }
         overall = sum(scores.get(k, 0) * v for k, v in weights.items())
         overall = min(100, max(0, int(overall)))
-        risk_level = self._score_to_risk(overall)
+
+        # Severity floor: a single HIGH/critical flag must not be diluted below
+        # its true risk by the weighted average.
+        overall, risk_level = self._apply_severity_floor(overall, flags)
 
         # Sort flags by severity
         severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
@@ -434,6 +437,44 @@ class FraudDetectionEngine:
         elif score >= 30: return "MEDIUM"
         return "LOW"
 
+    # Risk ordering + the numeric band each level starts at.
+    _RISK_ORDER = {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}
+    _RISK_MIN_SCORE = {"LOW": 0, "MEDIUM": 30, "HIGH": 55, "CRITICAL": 75}
+
+    def _apply_severity_floor(self, overall_score: int, flags: list) -> tuple[int, str]:
+        """
+        Ensure the risk level (and score) reflect the most severe flag present —
+        a weighted average can dilute a single HIGH/critical finding below its
+        true risk. Returns the (possibly raised) (overall_score, risk_level).
+
+        Floor rules (only high/critical drive the floor; mediums/lows do not):
+          - >=1 critical  -> HIGH, and CRITICAL if 2+ criticals or any high too
+          - >=2 high      -> HIGH
+          - exactly 1 high-> MEDIUM
+        The numeric risk level is never lowered, only raised to the floor.
+        """
+        numeric_risk = self._score_to_risk(overall_score)
+
+        high = sum(1 for f in flags if f.get("severity") == "high")
+        critical = sum(1 for f in flags if f.get("severity") == "critical")
+
+        floor = "LOW"
+        if critical >= 1:
+            floor = "CRITICAL" if (critical >= 2 or high >= 1) else "HIGH"
+        elif high >= 2:
+            floor = "HIGH"
+        elif high == 1:
+            floor = "MEDIUM"
+
+        # Take the more severe of the numeric risk and the severity floor.
+        risk_level = numeric_risk
+        if self._RISK_ORDER[floor] > self._RISK_ORDER[numeric_risk]:
+            risk_level = floor
+
+        # Keep the displayed number consistent with the (possibly raised) band.
+        overall_score = max(overall_score, self._RISK_MIN_SCORE[risk_level])
+        return min(100, overall_score), risk_level
+
     def _extract_state(self, address: str) -> Optional[str]:
         m = re.search(r'\b([A-Z]{2})\b\s*\d{5}', address)
         return m.group(1) if m else None
@@ -488,14 +529,18 @@ class FraudDetectionEngineV2(FraudDetectionEngine):
             # Blend into overall score (15% weight for address verification)
             current = result["overall_score"]
             blended = int((current * 0.85) + (verif_score * 0.15))
-            result["overall_score"] = min(100, blended)
-            result["risk_level"] = self._score_to_risk(result["overall_score"])
 
-            # Add flags sorted by severity
+            # Merge the merchant verification flags into the full set first...
             severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
             all_flags = result["flags"] + verif_flags
             all_flags.sort(key=lambda f: severity_order.get(f.get("severity", "low"), 4))
             result["flags"] = all_flags
+
+            # ...then apply the severity floor over the COMPLETE flag set, so
+            # merchant findings (e.g. business_not_found) can raise the risk.
+            blended, risk_level = self._apply_severity_floor(min(100, blended), all_flags)
+            result["overall_score"] = blended
+            result["risk_level"] = risk_level
 
             result["address_verification_score"] = verif_score
             result["place_details"] = place_details
