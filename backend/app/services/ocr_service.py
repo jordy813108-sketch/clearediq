@@ -203,7 +203,13 @@ class OCRService:
             "whether a tip was actually paid, return tip_amount: null. Each "
             "line item is "
             '{"description": str, "quantity": number|null, '
-            '"unit_price": number|null, "total": number|null}.\n\n'
+            '"unit_price": number|null, "total": number|null}. '
+            "Capture each discount, coupon, store reward (e.g. \"Kohl's Cash\"), "
+            "or percentage-off line as its OWN line item with a NEGATIVE total "
+            '(e.g. {"description": "Kohl\'s Cash", "total": -10}). For a '
+            "marked-down or sale item, set total to the price actually charged "
+            "(unit_price may be the original pre-discount price). Extract "
+            "subtotal, tax, and total exactly as printed on the receipt.\n\n"
             "Return exactly this shape:\n"
             "{\n"
             '  "merchant_name": str|null,\n'
