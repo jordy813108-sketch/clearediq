@@ -40,9 +40,9 @@ export function Sidebar() {
 
   return (
     <aside className="w-60 bg-white border-r border-gray-200 flex flex-col py-5 flex-shrink-0 h-screen sticky top-0">
-      <div className="px-5 pb-5 mb-3 border-b border-gray-100">
+      <div className="px-4 pb-5 mb-3 border-b border-gray-100">
         <Link href="/dashboard" className="inline-flex">
-          <Image src="/clearediq-logo.png" alt="cleaREDiq" width={148} height={44} style={{ objectFit: 'contain' }} />
+          <Image src="/clearediq-logo.png" alt="cleaREDiq" width={200} height={60} style={{ objectFit: 'contain' }} />
         </Link>
       </div>
       <nav className="flex-1 px-3 overflow-y-auto">

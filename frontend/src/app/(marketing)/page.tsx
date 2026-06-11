@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 const NAVY = '#1a1f3a';
 const RED  = '#E02020';
@@ -46,10 +47,9 @@ export default function LandingPage() {
       {/* NAV */}
       <nav style={{ background: NAVY, padding: '0 40px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 64, position: 'sticky', top: 0, zIndex: 100 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 22, fontWeight: 800, color: '#fff' }}>
-            clea<span style={{ color: RED }}>RED</span>iq
+          <span style={{ background: '#fff', borderRadius: 10, padding: '6px 14px', display: 'inline-flex', alignItems: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.18)' }}>
+            <Image src="/clearediq-logo.png" alt="cleaREDiq — AI Fraud Detection" width={156} height={47} style={{ objectFit: 'contain', display: 'block' }} />
           </span>
-          <span style={{ fontSize: 10, color: '#6b7280', marginLeft: 4 }}>AI FRAUD DETECTION</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
           <a href="#how-it-works" style={{ color: '#9ca3af', textDecoration: 'none', fontSize: 14 }}>How it works</a>
