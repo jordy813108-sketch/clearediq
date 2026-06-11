@@ -120,6 +120,31 @@ export default function ReceiptDetailPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Silent re-fetch (no full-page spinner) used while analysis is still running.
+  const refetch = useCallback(async (): Promise<Receipt | null> => {
+    try {
+      const { data } = await receiptsApi.get(id);
+      setReceipt(data);
+      return data;
+    } catch { return null; }
+  }, [id]);
+
+  const analysisComplete = (r: Receipt | null) => !!r && r.status !== 'processing';
+
+  // Poll until the background fraud analysis finishes, then stop. Stops on
+  // completion, on unmount, or after a 60s hard cap (24 × 2.5s).
+  useEffect(() => {
+    if (!receipt || analysisComplete(receipt)) return;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 24;
+    const timer = setInterval(async () => {
+      attempts += 1;
+      const data = await refetch();
+      if (analysisComplete(data) || attempts >= MAX_ATTEMPTS) clearInterval(timer);
+    }, 2500);
+    return () => clearInterval(timer);
+  }, [receipt?.status, id, refetch]);
+
   async function handleAction(action: 'approve' | 'reject' | 'escalate') {
     if (!receipt) return;
     setActing(true);
@@ -223,6 +248,17 @@ export default function ReceiptDetailPage() {
       </div>
 
       <div style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
+
+        {receipt.status === 'processing' ? (
+          <div style={{ background: 'white', borderRadius: 12, border: '0.5px solid #e5e7eb', padding: 48, textAlign: 'center' }}>
+            <Loader2 size={28} color={RED} style={{ animation: 'spin 1s linear infinite', marginBottom: 14 }} />
+            <div style={{ fontSize: 16, fontWeight: 600, color: NAVY, marginBottom: 6 }}>Analyzing receipt…</div>
+            <div style={{ fontSize: 13, color: '#6b7280', maxWidth: 420, margin: '0 auto' }}>
+              Running OCR, fraud checks, and image forensics. This usually takes a few seconds — results will appear automatically.
+            </div>
+          </div>
+        ) : (
+        <>
 
         {activeTab === 'report' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 16 }}>
@@ -407,6 +443,8 @@ export default function ReceiptDetailPage() {
               {JSON.stringify({ receipt, fraud_score: score, flags, place_details: place }, null, 2)}
             </pre>
           </div>
+        )}
+        </>
         )}
       </div>
     </div>
