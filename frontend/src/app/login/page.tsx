@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { ShieldCheck, Eye, EyeOff, ArrowRight, AlertCircle } from 'lucide-react';
 import { authApi } from '@/lib/api';
 
@@ -46,7 +47,7 @@ export default function LoginPage() {
           display: grid;
           grid-template-columns: 1fr 1fr;
           font-family: 'DM Sans', sans-serif;
-          background: #09090b;
+          background: #1a1f3a;
           overflow: hidden;
         }
 
@@ -57,7 +58,7 @@ export default function LoginPage() {
           flex-direction: column;
           justify-content: space-between;
           padding: 48px;
-          background: #09090b;
+          background: #1a1f3a;
           overflow: hidden;
         }
 
@@ -65,8 +66,8 @@ export default function LoginPage() {
           position: absolute;
           inset: 0;
           background:
-            radial-gradient(ellipse 60% 50% at 20% 80%, rgba(99,102,241,0.18) 0%, transparent 60%),
-            radial-gradient(ellipse 40% 40% at 80% 20%, rgba(139,92,246,0.12) 0%, transparent 50%);
+            radial-gradient(ellipse 60% 50% at 20% 80%, rgba(224,32,32,0.16) 0%, transparent 60%),
+            radial-gradient(ellipse 40% 40% at 80% 20%, rgba(255,255,255,0.05) 0%, transparent 50%);
           pointer-events: none;
         }
 
@@ -75,8 +76,8 @@ export default function LoginPage() {
           position: absolute;
           inset: 0;
           background-image:
-            linear-gradient(rgba(99,102,241,0.06) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(99,102,241,0.06) 1px, transparent 1px);
+            linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
           background-size: 48px 48px;
           mask-image: radial-gradient(ellipse at 30% 70%, black 20%, transparent 70%);
           pointer-events: none;
@@ -88,7 +89,7 @@ export default function LoginPage() {
           width: 320px;
           height: 320px;
           border-radius: 50%;
-          background: radial-gradient(circle, rgba(99,102,241,0.25) 0%, transparent 70%);
+          background: radial-gradient(circle, rgba(224,32,32,0.22) 0%, transparent 70%);
           bottom: -80px;
           left: -60px;
           filter: blur(40px);
@@ -107,21 +108,13 @@ export default function LoginPage() {
           position: relative;
           z-index: 1;
         }
-        .logo-mark {
-          width: 36px;
-          height: 36px;
-          border-radius: 10px;
-          background: linear-gradient(135deg, #6366f1, #8b5cf6);
-          display: flex;
+        .logo-chip {
+          display: inline-flex;
           align-items: center;
-          justify-content: center;
-          box-shadow: 0 0 20px rgba(99,102,241,0.4);
-        }
-        .logo-text {
-          font-family: 'DM Serif Display', serif;
-          font-size: 22px;
-          color: #fff;
-          letter-spacing: -0.3px;
+          background: #fff;
+          border-radius: 12px;
+          padding: 8px 14px;
+          box-shadow: 0 4px 16px rgba(0,0,0,0.25);
         }
 
         .left-content {
@@ -138,7 +131,7 @@ export default function LoginPage() {
         }
         .left-headline em {
           font-style: italic;
-          color: #818cf8;
+          color: #E02020;
         }
         .left-sub {
           font-size: 15px;
@@ -214,7 +207,7 @@ export default function LoginPage() {
           top: 0;
           bottom: 0;
           width: 1px;
-          background: linear-gradient(180deg, transparent, rgba(99,102,241,0.3) 40%, rgba(99,102,241,0.3) 60%, transparent);
+          background: linear-gradient(180deg, transparent, rgba(224,32,32,0.3) 40%, rgba(224,32,32,0.3) 60%, transparent);
         }
 
         .form-container {
@@ -233,7 +226,7 @@ export default function LoginPage() {
           font-family: 'DM Mono', monospace;
           font-size: 11px;
           font-weight: 500;
-          color: #6366f1;
+          color: #E02020;
           text-transform: uppercase;
           letter-spacing: 0.12em;
           margin-bottom: 12px;
@@ -241,7 +234,7 @@ export default function LoginPage() {
         .form-title {
           font-family: 'DM Serif Display', serif;
           font-size: 32px;
-          color: #09090b;
+          color: #1a1f3a;
           margin-bottom: 8px;
           letter-spacing: -0.5px;
           line-height: 1.15;
@@ -281,8 +274,8 @@ export default function LoginPage() {
           appearance: none;
         }
         .field-input:focus {
-          border-color: #6366f1;
-          box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
+          border-color: #E02020;
+          box-shadow: 0 0 0 3px rgba(224,32,32,0.12);
         }
         .field-input::placeholder { color: #a1a1aa; }
         .field-input.has-toggle { padding-right: 44px; }
@@ -302,7 +295,7 @@ export default function LoginPage() {
           justify-content: center;
           transition: color 0.15s;
         }
-        .toggle-btn:hover { color: #6366f1; }
+        .toggle-btn:hover { color: #E02020; }
 
         .field-row {
           display: flex;
@@ -312,7 +305,7 @@ export default function LoginPage() {
         }
         .forgot-link {
           font-size: 12px;
-          color: #6366f1;
+          color: #E02020;
           text-decoration: none;
           font-weight: 500;
         }
@@ -351,13 +344,14 @@ export default function LoginPage() {
           overflow: hidden;
         }
         .submit-btn:not(:disabled) {
-          background: linear-gradient(135deg, #6366f1, #8b5cf6);
+          background: #E02020;
           color: #fff;
-          box-shadow: 0 4px 16px rgba(99,102,241,0.35);
+          box-shadow: 0 4px 16px rgba(224,32,32,0.35);
         }
         .submit-btn:not(:disabled):hover {
+          background: #c81a1a;
           transform: translateY(-1px);
-          box-shadow: 0 6px 20px rgba(99,102,241,0.45);
+          box-shadow: 0 6px 20px rgba(224,32,32,0.45);
         }
         .submit-btn:not(:disabled):active {
           transform: translateY(0);
@@ -398,7 +392,7 @@ export default function LoginPage() {
           color: #71717a;
         }
         .register-link a {
-          color: #6366f1;
+          color: #E02020;
           font-weight: 600;
           text-decoration: none;
         }
@@ -422,27 +416,27 @@ export default function LoginPage() {
           gap: 8px;
         }
         .demo-btn:hover {
-          border-color: #6366f1;
-          color: #6366f1;
-          background: #f5f3ff;
+          border-color: #E02020;
+          color: #E02020;
+          background: #fff5f5;
         }
 
         /* Mobile */
         @media (max-width: 768px) {
           .login-root { grid-template-columns: 1fr; }
           .left-panel { display: none; }
-          .right-panel { padding: 32px 24px; background: #09090b; }
+          .right-panel { padding: 32px 24px; background: #1a1f3a; }
           .form-title { color: #fff; }
           .form-sub { color: #71717a; }
-          .form-eyebrow { color: #818cf8; }
+          .form-eyebrow { color: #E02020; }
           .field-label { color: #a1a1aa; }
           .field-input { background: #18181b; border-color: #27272a; color: #fff; }
-          .field-input:focus { border-color: #6366f1; }
+          .field-input:focus { border-color: #E02020; }
           .field-input::placeholder { color: #52525b; }
           .register-link { color: #52525b; }
           .right-panel::before { display: none; }
           .demo-btn { background: #18181b; border-color: #27272a; color: #a1a1aa; }
-          .demo-btn:hover { background: #1e1b4b; border-color: #6366f1; color: #818cf8; }
+          .demo-btn:hover { background: #1a1f3a; border-color: #E02020; color: #E02020; }
           .error-box { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.3); color: #fca5a5; }
         }
       `}</style>
@@ -455,10 +449,9 @@ export default function LoginPage() {
           <div className="orb" />
 
           <div className="left-logo">
-            <div className="logo-mark">
-              <ShieldCheck size={18} color="#fff" />
-            </div>
-            <span className="logo-text">cleaREDiq</span>
+            <span className="logo-chip">
+              <Image src="/clearediq-logo.png" alt="cleaREDiq — AI Fraud Detection" width={150} height={45} style={{ objectFit: 'contain', display: 'block' }} />
+            </span>
           </div>
 
           <div className="left-content">
