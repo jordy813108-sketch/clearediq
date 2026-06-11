@@ -210,6 +210,17 @@ class OCRService:
             "marked-down or sale item, set total to the price actually charged "
             "(unit_price may be the original pre-discount price). Extract "
             "subtotal, tax, and total exactly as printed on the receipt.\n\n"
+            "Also assess whether THIS receipt's own printed numbers are "
+            "internally consistent. Discounts, coupons, and store rewards "
+            "legitimately apply at different points (line-level, order-level, or "
+            "after subtotal) and conventions vary by merchant — account for how "
+            "THIS receipt structures them. Set internal_math_consistent to false "
+            "ONLY when the printed numbers cannot be reconciled under ANY "
+            "reasonable discount-application order (a strong sign the receipt was "
+            "edited). If they reconcile, OR you are unsure, OR the text is "
+            "incomplete/ambiguous, set it to true — do NOT guess false. When "
+            "false, set internal_math_reason to one short sentence naming the "
+            "specific impossibility.\n\n"
             "Return exactly this shape:\n"
             "{\n"
             '  "merchant_name": str|null,\n'
@@ -223,6 +234,8 @@ class OCRService:
             '  "total_amount": number|null,\n'
             '  "payment_method": str|null,\n'
             '  "card_last_four": str|null,\n'
+            '  "internal_math_consistent": true|false|null,\n'
+            '  "internal_math_reason": str|null,\n'
             '  "line_items": [ ... ]\n'
             "}\n\n"
             "RECEIPT TEXT:\n"
@@ -272,6 +285,13 @@ class OCRService:
                 out[f] = v if isinstance(v, str) and v.strip() else None
             for f in num_fields:
                 out[f] = self._coerce_number(parsed.get(f))
+
+            # Internal-consistency verdict — only trust an explicit boolean;
+            # anything else (missing / unsure) becomes None (no fraud signal).
+            consistent = parsed.get("internal_math_consistent")
+            out["internal_math_consistent"] = consistent if isinstance(consistent, bool) else None
+            reason = parsed.get("internal_math_reason")
+            out["internal_math_reason"] = reason.strip() if isinstance(reason, str) and reason.strip() else None
 
             items = []
             if isinstance(parsed.get("line_items"), list):
