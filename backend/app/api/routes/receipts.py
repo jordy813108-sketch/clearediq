@@ -164,9 +164,10 @@ async def _process_receipt(receipt_id: str, file_bytes: bytes, mime_type: str):
 
         receipt.risk_score = result["overall_score"]
         receipt.risk_level = result["risk_level"]
-        receipt.status = "reviewed" if result["overall_score"] < 30 else "pending"
-        if result["overall_score"] < 30:
-            receipt.status = "approved"
+        # Only LOW-risk receipts auto-approve. Anything MEDIUM or above (which
+        # now includes any single HIGH/critical flag via the severity floor) is
+        # held as "pending" for human review — never auto-rejected.
+        receipt.status = "approved" if result["risk_level"] == "LOW" else "pending"
         receipt.processed_at = datetime.utcnow()
 
         ms = int((datetime.utcnow() - start).total_seconds() * 1000)
