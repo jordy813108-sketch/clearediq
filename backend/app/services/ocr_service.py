@@ -55,7 +55,25 @@ class OCRService:
         except (KeyError, IndexError):
             pass
 
-        return self._parse_receipt_text(raw_text, confidence)
+        # Regex baseline first — always gives a complete result and is the
+        # fallback if AI extraction is unavailable or fails.
+        result = self._parse_receipt_text(raw_text, confidence)
+
+        # Augment with Claude-based extraction. Override regex values only where
+        # the AI returned a non-null value; never weaken what regex already found.
+        ai_fields = await self._ai_extract(raw_text)
+        if ai_fields:
+            for key, value in ai_fields.items():
+                if value is not None and value != []:
+                    result[key] = value
+            # Re-derive tax_rate from the merged subtotal/tax.
+            sub = result.get("subtotal")
+            tax = result.get("tax_amount")
+            if sub and tax and sub > 0:
+                result["tax_rate"] = round(tax / sub * 100, 2)
+            result["provider"] = "google_vision+claude"
+
+        return result
 
     def _parse_receipt_text(self, text: str, confidence: float) -> dict:
         """Parse raw OCR text into structured receipt fields."""
@@ -120,6 +138,126 @@ class OCRService:
         result["line_items"] = line_items[:20]  # cap at 20
 
         return result
+
+    async def _ai_extract(self, raw_text: str) -> Optional[dict]:
+        """
+        Use Claude to extract structured receipt fields from the OCR text.
+        Returns a dict of fields, or None on any failure (caller falls back to
+        the regex result). Never raises — the upload pipeline must not break.
+        """
+        if not settings.ANTHROPIC_API_KEY:
+            return None
+        if not raw_text or not raw_text.strip():
+            return None
+
+        prompt = (
+            "You are a receipt data extractor. Below is the raw OCR text of a "
+            "single receipt. Extract the fields into JSON.\n\n"
+            "Respond with ONLY a JSON object — no prose, no explanation, no "
+            "markdown, no code fences. Use null for any field that is not "
+            "present. Numbers must be JSON numbers (not strings, no currency "
+            "symbols or thousands separators). Format transaction_date as "
+            "YYYY-MM-DD. Each line item is "
+            '{"description": str, "quantity": number|null, '
+            '"unit_price": number|null, "total": number|null}.\n\n'
+            "Return exactly this shape:\n"
+            "{\n"
+            '  "merchant_name": str|null,\n'
+            '  "merchant_address": str|null,\n'
+            '  "transaction_date": str|null,\n'
+            '  "transaction_time": str|null,\n'
+            '  "transaction_id": str|null,\n'
+            '  "subtotal": number|null,\n'
+            '  "tax_amount": number|null,\n'
+            '  "total_amount": number|null,\n'
+            '  "payment_method": str|null,\n'
+            '  "card_last_four": str|null,\n'
+            '  "line_items": [ ... ]\n'
+            "}\n\n"
+            "RECEIPT TEXT:\n"
+            f"{raw_text}"
+        )
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key": settings.ANTHROPIC_API_KEY,
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json",
+                    },
+                    json={
+                        "model": "claude-sonnet-4-6",
+                        "max_tokens": 1024,
+                        "messages": [{
+                            "role": "user",
+                            "content": [{"type": "text", "text": prompt}],
+                        }],
+                    },
+                )
+
+            if response.status_code != 200:
+                log.warning("AI OCR extraction non-200", status=response.status_code)
+                return None
+
+            text = response.json()["content"][0]["text"]
+            text = re.sub(r'```json|```', '', text).strip()
+            parsed = json.loads(text)
+
+            if not isinstance(parsed, dict):
+                return None
+
+            num_fields = ("subtotal", "tax_amount", "total_amount")
+            str_fields = (
+                "merchant_name", "merchant_address", "transaction_date",
+                "transaction_time", "transaction_id", "payment_method",
+                "card_last_four",
+            )
+
+            out: dict = {}
+            for f in str_fields:
+                v = parsed.get(f)
+                out[f] = v if isinstance(v, str) and v.strip() else None
+            for f in num_fields:
+                out[f] = self._coerce_number(parsed.get(f))
+
+            items = []
+            if isinstance(parsed.get("line_items"), list):
+                for li in parsed["line_items"][:20]:
+                    if not isinstance(li, dict):
+                        continue
+                    desc = li.get("description")
+                    if not (isinstance(desc, str) and desc.strip()):
+                        continue
+                    items.append({
+                        "description": desc.strip(),
+                        "quantity": self._coerce_number(li.get("quantity")),
+                        "unit_price": self._coerce_number(li.get("unit_price")),
+                        "total": self._coerce_number(li.get("total")),
+                    })
+            out["line_items"] = items
+
+            return out
+
+        except Exception as e:
+            log.warning("AI OCR extraction failed", error=str(e))
+            return None
+
+    @staticmethod
+    def _coerce_number(value) -> Optional[float]:
+        """Best-effort numeric coercion; returns None for anything unparseable."""
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            cleaned = value.replace("$", "").replace(",", "").strip()
+            try:
+                return float(cleaned)
+            except ValueError:
+                return None
+        return None
 
     def _mock_result(self) -> dict:
         return {
