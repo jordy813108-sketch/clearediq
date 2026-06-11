@@ -73,7 +73,37 @@ class OCRService:
                 result["tax_rate"] = round(tax / sub * 100, 2)
             result["provider"] = "google_vision+claude"
 
+        # Deterministically reconcile the tip against the math so an AI tip
+        # guess (e.g. from a "suggested gratuity" table) can't create a false
+        # math mismatch. Runs on both the AI and regex-only paths.
+        self._reconcile_tip(result)
+
         return result
+
+    def _reconcile_tip(self, result: dict) -> None:
+        """Derive tip from subtotal/tax/total (which OCR reads reliably) rather
+        than trusting an extracted tip guess. Mutates result in place.
+
+        - all three present and total > subtotal+tax -> tip = the residual
+        - total == subtotal+tax (within $0.02)        -> tip = None (no tip)
+        - total < subtotal+tax (impossible as a tip)  -> tip = None; the math
+          validator then flags the genuine inconsistency
+        - any of subtotal/tax/total missing           -> leave tip untouched
+        """
+        subtotal = result.get("subtotal")
+        tax = result.get("tax_amount")
+        total = result.get("total_amount")
+
+        # Use 'is None' (not truthiness) so a legitimate 0.00 still counts.
+        if subtotal is None or tax is None or total is None:
+            return
+
+        expected_tip = round(total - subtotal - tax, 2)
+        if expected_tip > 0.02:
+            result["tip_amount"] = expected_tip
+        else:
+            # ~0 (no tip) or negative (impossible as a tip) -> clear it.
+            result["tip_amount"] = None
 
     def _parse_receipt_text(self, text: str, confidence: float) -> dict:
         """Parse raw OCR text into structured receipt fields."""
