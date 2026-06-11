@@ -165,15 +165,24 @@ class FraudDetectionEngine:
                     })
 
         if line_items and subtotal:
-            line_total = round(sum(li.get("total", 0) for li in line_items if li.get("total")), 2)
-            if line_total > 0 and abs(line_total - subtotal) > 0.05:
-                score += 40
+            # Discounts/coupons/store-cash appear as NEGATIVE line items applied
+            # below the subtotal line, so including them makes the sum != subtotal
+            # on perfectly legit receipts. Skip the check entirely when any
+            # discount line is present; otherwise compare only the positive item
+            # lines. Line-item OCR is the least reliable field, so this is a soft,
+            # zero-score informational note — never a scored fraud signal.
+            has_discount = any((li.get("total") or 0) < 0 for li in line_items)
+            positive_sum = round(
+                sum((li.get("total") or 0) for li in line_items if (li.get("total") or 0) > 0), 2
+            )
+            tolerance = max(0.05, round(subtotal * 0.02, 2))  # 5c or 2% of subtotal
+            if not has_discount and positive_sum > 0 and abs(positive_sum - subtotal) > tolerance:
                 flags.append({
                     "flag_type": "line_item_mismatch",
-                    "severity": "medium",
+                    "severity": "low",
                     "title": "Line items don't sum to subtotal",
-                    "description": f"Line items total ${line_total} but subtotal shows ${subtotal}.",
-                    "weight": 0.4,
+                    "description": f"Itemized lines total ${positive_sum} but subtotal shows ${subtotal}.",
+                    "weight": 0,
                 })
 
         if total and total > 10000:

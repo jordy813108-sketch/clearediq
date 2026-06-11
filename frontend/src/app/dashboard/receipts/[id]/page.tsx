@@ -197,7 +197,7 @@ export default function ReceiptDetailPage() {
   const businessStatus  = hasFlag('business_not_found') ? 'fail' : hasFlag('address') ? 'fail' : place ? 'pass' : 'unknown';
   const addressStatus   = hasFlag('city_mismatch') || hasFlag('state_mismatch') ? 'fail' : place ? 'pass' : 'unknown';
   const phoneStatus     = hasFlag('phone') ? 'fail' : place?.phone ? 'pass' : 'unknown';
-  const mathStatus      = hasFlag('math_mismatch') || hasFlag('line_item') ? 'fail' : 'pass';
+  const mathStatus      = hasFlag('math_mismatch') ? 'fail' : 'pass';
   const taxStatus       = hasFlag('tax_rate_mismatch') || hasFlag('impossible_tax') ? 'fail' : hasFlag('zero_tax') ? 'warn' : 'pass';
   const imageStatus     = hasFlag('ai_vision_likely_fake') || hasFlag('ai_generated') || hasFlag('editing_software') ? 'fail' : hasFlag('ai_vision_passed') ? 'pass' : 'unknown';
   const dupStatus       = hasFlag('duplicate') ? 'fail' : 'pass';
