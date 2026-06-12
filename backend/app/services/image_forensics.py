@@ -485,7 +485,7 @@ Respond with ONLY a JSON object in this exact format:
         is unavailable on this build.
         """
         try:
-            from c2pa import Reader  # provided by the c2pa-python wheel
+            import c2pa  # provided by the c2pa-python wheel
         except Exception:
             # Library not installed/usable on this build — degrade to a
             # conservative, clearly-unverified raw-marker scan.
@@ -494,33 +494,31 @@ Respond with ONLY a JSON object in this exact format:
         import io
         import json
 
+        fmt = self._c2pa_mime(image_bytes)
         try:
-            fmt = self._c2pa_mime(image_bytes)
-            stream = io.BytesIO(image_bytes)
-            # Support both the newer factory API and the direct constructor.
-            if hasattr(Reader, "from_stream"):
-                reader = Reader.from_stream(fmt, stream)
-            else:
-                reader = Reader(fmt, stream)
-            manifest = json.loads(reader.json())
+            # c2pa-python 0.32.x: Reader is a context manager over (mime, stream).
+            # A missing/unreadable manifest raises — caught below as "no signal".
+            with c2pa.Reader(fmt, io.BytesIO(image_bytes)) as reader:
+                # Trust gate — act ONLY on a cryptographically VALID signature,
+                # so a forged/self-asserted manifest cannot be taken at face value.
+                try:
+                    valid = bool(reader.is_valid())
+                except Exception:
+                    valid = False
+                try:
+                    state = str(reader.get_validation_state() or "")
+                except Exception:
+                    state = ""
+                if not valid and state:
+                    valid = state.lower() in ("valid", "trusted")
+                trusted = state.lower() == "trusted"
+                if not valid:
+                    log.info("C2PA manifest present but not validly signed — ignoring")
+                    return 0, []
+                manifest = json.loads(reader.json())
         except Exception as e:
-            # No manifest, unreadable, or unexpected API — treat as "no signal".
+            # No manifest present (Reader raises), unreadable, or unexpected — no signal.
             log.info("C2PA read produced no usable manifest", error=str(e))
-            return 0, []
-
-        # Trust gate: act only on a cryptographically valid signature.
-        state = str(manifest.get("validation_state", "")).lower()
-        valid = state in ("valid", "trusted")
-        if not valid:
-            # Fall back to validation_status list: empty / no failures => ok.
-            vs = manifest.get("validation_status")
-            if isinstance(vs, list) and vs:
-                valid = not any("fail" in str(s).lower() for s in vs)
-            else:
-                valid = False  # unknown -> do NOT trust (conservative)
-        trusted = state == "trusted"
-        if not valid:
-            log.info("C2PA manifest present but not validly signed — ignoring")
             return 0, []
 
         # Locate the active manifest.
