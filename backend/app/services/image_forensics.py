@@ -36,6 +36,12 @@ class ImageForensicsEngine:
         score += exif_score
         flags.extend(exif_flags)
 
+        # 1b. C2PA / Content Credentials — cryptographic provenance manifest.
+        # High-confidence, code-readable signal (vs the heuristic checks).
+        c2pa_score, c2pa_flags = self._analyze_c2pa(image_bytes)
+        score += c2pa_score
+        flags.extend(c2pa_flags)
+
         # 2. File structure analysis
         struct_score, struct_flags = self._analyze_file_structure(image_bytes, filename)
         score += struct_score
@@ -455,6 +461,181 @@ Respond with ONLY a JSON object in this exact format:
             })
 
         return min(score, 100), flags
+
+    # ── C2PA / Content Credentials ──────────────────────────────────────────
+
+    # Known AI image generators and the IPTC digital-source-type codes that
+    # mark synthetic media. Matched case-insensitively against the manifest.
+    _C2PA_AI_TOOLS = (
+        "firefly", "dall", "openai", "chatgpt", "imagen", "gemini",
+        "nano banana", "midjourney", "stable diffusion", "ideogram",
+        "leonardo", "flux", "grok",
+    )
+    _C2PA_AI_SOURCE = ("trainedalgorithmicmedia", "compositewithtrainedalgorithmicmedia")
+    _C2PA_EDIT_TOOLS = ("photoshop", "lightroom", "gimp", "affinity", "pixelmator", "canva")
+    _C2PA_CAMERA_SIGNERS = ("pixel", "google", "apple", "iphone", "samsung", "leica", "sony", "nikon", "canon inc")
+
+    def _analyze_c2pa(self, image_bytes: bytes) -> tuple[int, list]:
+        """Read the C2PA / Content Credentials provenance manifest.
+
+        ONLY a cryptographically VALID manifest is trusted — a broken/forged
+        manifest is ignored (a fraudster must not be able to assert provenance).
+        Absence of a manifest is NOT a signal (it's strippable). Never raises.
+        Falls back to a conservative, UNVERIFIED marker scan if the c2pa library
+        is unavailable on this build.
+        """
+        try:
+            from c2pa import Reader  # provided by the c2pa-python wheel
+        except Exception:
+            # Library not installed/usable on this build — degrade to a
+            # conservative, clearly-unverified raw-marker scan.
+            return self._c2pa_raw_fallback(image_bytes)
+
+        import io
+        import json
+
+        try:
+            fmt = self._c2pa_mime(image_bytes)
+            stream = io.BytesIO(image_bytes)
+            # Support both the newer factory API and the direct constructor.
+            if hasattr(Reader, "from_stream"):
+                reader = Reader.from_stream(fmt, stream)
+            else:
+                reader = Reader(fmt, stream)
+            manifest = json.loads(reader.json())
+        except Exception as e:
+            # No manifest, unreadable, or unexpected API — treat as "no signal".
+            log.info("C2PA read produced no usable manifest", error=str(e))
+            return 0, []
+
+        # Trust gate: act only on a cryptographically valid signature.
+        state = str(manifest.get("validation_state", "")).lower()
+        valid = state in ("valid", "trusted")
+        if not valid:
+            # Fall back to validation_status list: empty / no failures => ok.
+            vs = manifest.get("validation_status")
+            if isinstance(vs, list) and vs:
+                valid = not any("fail" in str(s).lower() for s in vs)
+            else:
+                valid = False  # unknown -> do NOT trust (conservative)
+        trusted = state == "trusted"
+        if not valid:
+            log.info("C2PA manifest present but not validly signed — ignoring")
+            return 0, []
+
+        # Locate the active manifest.
+        manifests = manifest.get("manifests") or {}
+        active_label = manifest.get("active_manifest")
+        active = manifests.get(active_label) if isinstance(manifests, dict) else None
+        if not isinstance(active, dict):
+            return 0, []
+
+        generator = str(active.get("claim_generator") or "")
+        signer = str(((active.get("signature_info") or {}).get("issuer")) or "")
+        blob = f"{generator} {signer}".lower()
+
+        # Collect digital-source-types and editing actions from assertions.
+        source_types, edit_tools = [], []
+        for a in (active.get("assertions") or []):
+            if not isinstance(a, dict):
+                continue
+            data = a.get("data") or {}
+            for action in (data.get("actions") or []):
+                if not isinstance(action, dict):
+                    continue
+                dst = str(action.get("digitalSourceType") or "").lower()
+                if dst:
+                    source_types.append(dst)
+                sw = str(action.get("softwareAgent") or "").lower()
+                if action.get("action") in ("c2pa.edited", "c2pa.color_adjustments", "c2pa.filtered"):
+                    if sw:
+                        edit_tools.append(sw)
+            # Some generators also place the source type at the assertion root.
+            dst = str(data.get("digitalSourceType") or "").lower()
+            if dst:
+                source_types.append(dst)
+
+        flags = []
+        score = 0
+        is_ai = any(any(code in s for code in self._C2PA_AI_SOURCE) for s in source_types) \
+            or any(t in blob for t in self._C2PA_AI_TOOLS)
+
+        if is_ai:
+            score += 90
+            flags.append({
+                "flag_type": "c2pa_ai_generated",
+                "severity": "high",
+                "title": "Receipt image is AI-generated (C2PA verified)",
+                "description": (
+                    "A cryptographically valid Content Credentials manifest marks this "
+                    f"image as AI-generated (source: {generator or signer or 'AI generator'}). "
+                    "A genuine receipt photo should be a camera capture."
+                ),
+                "weight": 0.9,
+            })
+        elif edit_tools or any(t in blob for t in self._C2PA_EDIT_TOOLS):
+            tool = (edit_tools[0] if edit_tools else next((t for t in self._C2PA_EDIT_TOOLS if t in blob), "editing software")).title()
+            score += 40
+            flags.append({
+                "flag_type": "c2pa_edited",
+                "severity": "medium",
+                "title": f"Receipt image was edited in {tool}",
+                "description": (
+                    "Content Credentials show this image was processed by image-editing "
+                    f"software ({tool})."
+                ),
+                "weight": 0.4,
+            })
+        elif trusted and any("digitalcapture" in s for s in source_types) \
+                and any(c in blob for c in self._C2PA_CAMERA_SIGNERS):
+            # Positive signal — only when the signer is a TRUSTED camera maker
+            # (a self-signed "camera" credential must not exculpate). Zero score.
+            flags.append({
+                "flag_type": "c2pa_camera_verified",
+                "severity": "low",
+                "title": "Camera capture verified (C2PA)",
+                "description": (
+                    "A trusted Content Credentials manifest indicates this image was "
+                    f"captured by a camera ({generator or signer or 'device'})."
+                ),
+                "weight": 0,
+            })
+
+        return min(score, 100), flags
+
+    @staticmethod
+    def _c2pa_mime(image_bytes: bytes) -> str:
+        if image_bytes[:3] == b'\xff\xd8\xff':
+            return "image/jpeg"
+        if image_bytes[:8] == b'\x89PNG\r\n\x1a\n':
+            return "image/png"
+        if image_bytes[:4] == b'%PDF':
+            return "application/pdf"
+        return "image/jpeg"
+
+    def _c2pa_raw_fallback(self, image_bytes: bytes) -> tuple[int, list]:
+        """Dependency-free fallback when the c2pa library can't be installed.
+
+        We can detect the presence of a C2PA/JUMBF block and scan for the AI
+        source-type marker, but we CANNOT validate the signature — so this only
+        emits a conservative, clearly-UNVERIFIED MEDIUM note, never the HIGH
+        'verified' flag.
+        """
+        head = image_bytes[:300000]
+        has_c2pa = (b"c2pa" in head and b"jumb" in head) or b"urn:c2pa" in head
+        if has_c2pa and b"trainedAlgorithmicMedia" in head:
+            return 40, [{
+                "flag_type": "c2pa_marker_ai_unverified",
+                "severity": "medium",
+                "title": "Possible AI-generated image (C2PA marker, unverified)",
+                "description": (
+                    "An embedded Content Credentials marker indicates AI generation, "
+                    "but the signature could not be validated on this server. Manual "
+                    "review recommended."
+                ),
+                "weight": 0.4,
+            }]
+        return 0, []
 
     def _heuristic_receipt_checks(self, image_bytes: bytes) -> tuple[int, list]:
         """
