@@ -470,18 +470,54 @@ class FraudDetectionEngine:
     _RISK_ORDER = {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}
     _RISK_MIN_SCORE = {"LOW": 0, "MEDIUM": 30, "HIGH": 55, "CRITICAL": 75}
 
+    # "Benign" mediums are digital-origin / OCR-quality noise that fires on
+    # legit non-camera receipts (screenshots, emailed PDFs, blurry photos) and
+    # is highly correlated — so the WHOLE group collapses to a single weak
+    # signal. Every other medium is an independent "suspicious" signal.
+    _BENIGN_MEDIUM = {
+        "no_exif_data", "png_receipt", "pdf_origin_markers", "very_small_file",
+        "low_ocr_confidence", "missing_merchant", "generic_merchant_name",
+    }
+    _MEDIUM_BENIGN_WEIGHT = 12
+    _MEDIUM_SUSPICIOUS_WEIGHT = 18
+    _MEDIUM_FLOOR_CAP = 50  # mediums alone never reach the HIGH band (>=55)
+
+    def _medium_score_floor(self, flags: list) -> int:
+        """Weighted numeric floor from medium-severity flags.
+
+        The benign group collapses to a single weak signal (+12 total no matter
+        how many fire); each suspicious medium counts individually (+18). Capped
+        at 50 so mediums alone top out at MEDIUM, never HIGH. Effect: a lone
+        medium or a benign-only screenshot stays LOW; two independent signals
+        (or one suspicious + the benign group) cross the 30 MEDIUM threshold.
+        """
+        mediums = [f for f in flags if f.get("severity") == "medium"]
+        benign_present = any(f.get("flag_type") in self._BENIGN_MEDIUM for f in mediums)
+        suspicious = sum(1 for f in mediums if f.get("flag_type") not in self._BENIGN_MEDIUM)
+        total = suspicious * self._MEDIUM_SUSPICIOUS_WEIGHT
+        if benign_present:
+            total += self._MEDIUM_BENIGN_WEIGHT
+        return min(self._MEDIUM_FLOOR_CAP, total)
+
     def _apply_severity_floor(self, overall_score: int, flags: list) -> tuple[int, str]:
         """
         Ensure the risk level (and score) reflect the most severe flag present —
         a weighted average can dilute a single HIGH/critical finding below its
         true risk. Returns the (possibly raised) (overall_score, risk_level).
 
-        Floor rules (only high/critical drive the floor; mediums/lows do not):
+        Floor rules (high/critical drive the level floor directly):
           - >=1 critical  -> HIGH, and CRITICAL if 2+ criticals or any high too
           - >=2 high      -> HIGH
           - exactly 1 high-> MEDIUM
-        The numeric risk level is never lowered, only raised to the floor.
+        Medium flags raise the numeric SCORE via a weighted floor (see
+        _medium_score_floor) — two independent signals (or one suspicious + the
+        benign group) cross 30 -> MEDIUM, while a lone medium / benign-only
+        screenshot stays LOW. The numeric risk level is only ever raised.
         """
+        # Let medium flags lift the numeric score first, so the score-derived
+        # risk reflects them; then take the more-severe of that and the
+        # high/critical level floor.
+        overall_score = max(overall_score, self._medium_score_floor(flags))
         numeric_risk = self._score_to_risk(overall_score)
 
         high = sum(1 for f in flags if f.get("severity") == "high")
