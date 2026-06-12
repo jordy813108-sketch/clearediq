@@ -278,23 +278,24 @@ class ImageForensicsEngine:
             else:
                 media_type = "image/jpeg"
 
-            prompt = """You are an expert receipt fraud analyst. Analyze this receipt image and assess its authenticity.
+            prompt = """You are an expert receipt fraud analyst. Examine this receipt image for BOTH (A) whole-receipt fabrication and (B) localized editing of individual fields.
 
-Look carefully for these fraud indicators:
-
-1. TYPOGRAPHY: Are fonts consistent throughout? Real thermal printer receipts have uniform, slightly imperfect fonts. AI-generated or designed receipts often have pixel-perfect typography or mixed fonts.
-
-2. PRINTING ARTIFACTS: Real thermal receipts show slight fading, uneven ink, and natural paper texture. Do you see this?
-
-3. ALIGNMENT: Real receipts have slight misalignments and imperfections. Is everything suspiciously perfect?
-
-4. PAPER/BACKGROUND: Is there a realistic paper texture, or does it look like a white/flat digital background?
-
+PART A — Overall authenticity. Consider:
+1. TYPOGRAPHY: Are fonts consistent throughout? Real thermal receipts have uniform, slightly imperfect fonts; AI-generated or designed receipts often have pixel-perfect or mixed fonts.
+2. PRINTING ARTIFACTS: Real thermal receipts show slight fading, uneven ink, and natural paper texture.
+3. ALIGNMENT: Real receipts have slight misalignments and imperfections.
+4. PAPER/BACKGROUND: Realistic paper texture vs a flat white/digital background.
 5. LOGO QUALITY: Is the merchant logo suspiciously high-resolution compared to the text?
+6. OVERALL FEEL: A photo of a real receipt, a screenshot, or a digitally created/edited image?
 
-6. OVERALL FEEL: Does this look like a photograph of a real receipt, a screenshot of a digital receipt, or a digitally created/edited image?
+PART B — Localized editing (MOST IMPORTANT). Someone may alter ONE number (most often the TOTAL) on an otherwise-real receipt. Examine EACH key financial field SPECIFICALLY — the TOTAL, SUBTOTAL, TAX, each item price, and the date — and compare how that field is RENDERED to the surrounding original text. A digitally edited number typically differs from its neighbors in one or more of:
+- font weight / boldness, or darkness / ink density (e.g. a number that is noticeably DARKER or heavier than the rest)
+- sharpness / resolution (crisp, anti-aliased glyphs sitting on otherwise fuzzy thermal text)
+- baseline alignment or vertical position
+- character spacing or font shape
+- a faint box, halo, smudge, or background patch around the characters (cloning / inpainting)
 
-7. SPECIFIC RED FLAGS: Look for copy-paste artifacts, inconsistent shadows, impossible geometry, AI hallucination patterns (like wrong letter counts in words, impossible merchant details).
+CRITICAL — do NOT confuse natural variation with editing. Uneven lighting, glare, shadows, camera focus, paper creases/folds, and thermal-print fade cause GRADUAL or BROAD changes in brightness/sharpness across whole regions — these are NORMAL and are NOT tampering. Only set visual_tampering_detected to true when there is a CLEAR, LOCALIZED rendering inconsistency confined to specific characters/numbers (especially an amount) that indicates digital insertion. If the rendering is uniform, or a difference is explainable by lighting / fold / fade, or you are unsure, set it to false.
 
 Respond with ONLY a JSON object in this exact format:
 {
@@ -302,7 +303,11 @@ Respond with ONLY a JSON object in this exact format:
   "confidence": 0-100,
   "verdict": "LIKELY_REAL" | "POSSIBLY_FAKE" | "LIKELY_FAKE" | "AI_GENERATED" | "SCREENSHOT" | "EDITED",
   "reasons": ["reason 1", "reason 2"],
-  "fraud_indicators": ["specific thing 1", "specific thing 2"]
+  "fraud_indicators": ["specific thing 1", "specific thing 2"],
+  "visual_tampering_detected": true or false,
+  "tampering_confidence": 0-100,
+  "suspicious_fields": ["total", "subtotal", ...],
+  "edited_regions": ["short description of each localized inconsistency, e.g. 'the TOTAL renders noticeably darker and heavier than the surrounding text'"]
 }"""
 
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -315,7 +320,7 @@ Respond with ONLY a JSON object in this exact format:
                     },
                     json={
                         "model": "claude-opus-4-8",
-                        "max_tokens": 500,
+                        "max_tokens": 1024,
                         "messages": [{
                             "role": "user",
                             "content": [
@@ -351,6 +356,18 @@ Respond with ONLY a JSON object in this exact format:
                 is_suspicious = analysis.get("is_suspicious", False)
                 reasons = analysis.get("reasons", [])
                 indicators = analysis.get("fraud_indicators", [])
+
+                # Localized-editing signal (Part B). Only an explicit True counts.
+                tampering = analysis.get("visual_tampering_detected") is True
+                tampering_conf = analysis.get("tampering_confidence", 0)
+                if not isinstance(tampering_conf, (int, float)):
+                    tampering_conf = 0
+                suspicious_fields = analysis.get("suspicious_fields") or []
+                if not isinstance(suspicious_fields, list):
+                    suspicious_fields = []
+                edited_regions = analysis.get("edited_regions") or []
+                if not isinstance(edited_regions, list):
+                    edited_regions = []
 
                 verdict_scores = {
                     "LIKELY_REAL":    0,
@@ -396,14 +413,34 @@ Respond with ONLY a JSON object in this exact format:
                         "weight": ai_score / 100,
                     })
 
-                elif confidence > 70:
-                    # Low risk — note it passed AI review
+                elif confidence > 70 and not tampering:
+                    # Low risk — note it passed AI review (suppressed if a
+                    # localized edit was detected, to avoid a contradictory note).
                     flags.append({
                         "flag_type": "ai_vision_passed",
                         "severity": "low",
                         "title": "AI vision analysis: receipt appears authentic",
                         "description": f"Visual analysis found no clear signs of AI generation or editing (confidence: {confidence}%)",
                         "weight": 0,
+                    })
+
+                # Localized tampering — a specific field rendered inconsistently
+                # with its surroundings (e.g. an edited, darker TOTAL). Conservative
+                # MEDIUM signal, gated on an explicit detection with >=60 confidence.
+                if tampering and tampering_conf >= 60:
+                    score += 40
+                    fields_txt = ", ".join(str(f) for f in suspicious_fields[:5]) or "one or more amounts"
+                    desc = f"Localized rendering inconsistency in: {fields_txt}."
+                    regions_txt = "; ".join(str(r) for r in edited_regions[:3])
+                    if regions_txt:
+                        desc += f" {regions_txt}."
+                    desc += f" (tampering confidence {int(tampering_conf)}%)"
+                    flags.append({
+                        "flag_type": "visual_tampering_suspected",
+                        "severity": "medium",
+                        "title": "Possible digitally edited text",
+                        "description": desc,
+                        "weight": 0.4,
                     })
 
         except Exception as e:
